@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 # --- Configuration ---
 # Load environment variables from .env file
-load_dotenv('C:/Users/gabri/Desktop/Prog/DoMinionBot/bot.env')
+load_dotenv('C:/Users/gabri/Desktop/Prog/Cred/bot.env')
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 GOOGLE_DOC_ID = os.getenv('GOOGLE_DOC_ID') # The ID of your Google Doc file
 PATH_TO_GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON_PATH', 'service_account.json') # Path to your service account key file
@@ -84,7 +84,7 @@ def parse_character_stats(doc_text_content, discord_mention_tag):
     target_player_line = f"Player: {discord_mention_tag}"
     print(f"Searching for player line: '{target_player_line}' in document.")
 
-    character_blocks = doc_text_content.split('---')
+    character_blocks = doc_text_content.split('X_X_X')
     stats = {}
     found_player = False
 
