@@ -116,6 +116,52 @@ def parse_character_stats(doc_text_content, discord_mention_tag):
         
     return stats
 
+def parse_character_passives(doc_text_content, discord_mention_tag):
+    """
+    Parses the document content to find passive abilities for a specific Discord user.
+    Format:
+    Player: @Username#1234
+    Passive Abilities:
+    - Ability1
+    - Ability2
+    ...
+    """
+    if not doc_text_content:
+        return None
+
+    target_player_line = f"Player: {discord_mention_tag}"
+    print(f"Searching for player line: '{target_player_line}' in document.")
+
+    character_blocks = doc_text_content.split('P_P_P')
+    passives ={}
+    found_player = False
+
+    for block in character_blocks:
+        block = block.strip()
+        lines = block.split('\n')
+        if not lines or not lines[0].strip(): # Ensure there's a first line
+            continue
+        
+        current_player_line = lines[0].strip()
+        print(f"Checking block starting with: '{current_player_line}'") # Debug
+
+        if current_player_line == target_player_line:
+            found_player = True
+            passives['Player'] = discord_mention_tag 
+            for line in lines[1:]:
+                line = line.strip()
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    passives[key.strip()] = value.strip()
+            print(f"Found and parsed stats for {discord_mention_tag}: {passives}") # Debug
+            break 
+            
+    if not found_player:
+        print(f"Player block not found for {discord_mention_tag}")
+        return None
+    print(f"Parsed passives for {discord_mention_tag}: {passives}") # Debug
+    return passives
+
 # --- Discord Bot Events and Commands ---
 
 @bot.event
@@ -128,7 +174,7 @@ async def on_ready():
         print("Successfully authenticated with Google APIs.")
     else:
         print("Failed to authenticate with Google APIs. Check logs.")
-
+#stats command
 @bot.command(name='charstats', help='Fetches character stats for a mentioned user. Usage: !charstats @Username')
 async def charstats(ctx, member: discord.Member = None):
     """Command to fetch and display character stats."""
@@ -151,6 +197,7 @@ async def charstats(ctx, member: discord.Member = None):
     
     stats = parse_character_stats(doc_content_text, discord_user_tag)
 
+
     if stats:
         MAX_EMBED_FIELDS = 24 # Max fields, leaving one for a potential "truncated" message
         
@@ -164,6 +211,7 @@ async def charstats(ctx, member: discord.Member = None):
             embed.description = f"**Character:** {stats['Character Name']}"
         else:
             embed.description = "Character name not found in stats."
+            
 
         # Prepare fields, excluding Player and Character Name which are handled
         fields_to_add = []
@@ -195,7 +243,72 @@ async def charstats_error(ctx, error):
     else:
         await ctx.send("An unexpected error occurred. Please check the bot logs.")
         print(f"Error in charstats command: {error}")
+# passive abilities command
+@bot.command(name='charpassives', help='Fetches character passive abilities for a mentioned user. Usage: !charpassives @Username')
+async def charpassives(ctx, member: discord.Member = None):
+    """Command to fetch and display character passive abilities."""
+    if member is None:
+        await ctx.send("Please mention a user to get their character passives. Usage: `!charpassives @Username`")
+        return
 
+    discord_user_tag = f"@{member.name}#{member.discriminator}"
+    await ctx.send(f"Fetching passives for {discord_user_tag} from Google Docs...")
+
+    gdocs_service = get_google_docs_service()
+    if not gdocs_service:
+        await ctx.send("Error: Could not connect to Google Services. Check bot logs.")
+        return
+
+    doc_content_text = read_google_doc_content(gdocs_service, GOOGLE_DOC_ID)
+    if not doc_content_text:
+        await ctx.send(f"Error: Could not read the Google Doc (ID: {GOOGLE_DOC_ID}). Make sure it's shared correctly, the ID is valid, and the document is not empty.")
+        return
+    
+    passives = parse_character_passives(doc_content_text, discord_user_tag)
+    if passives:
+        MAX_EMBED_FIELDS = 24 # Max fields, leaving one for a potential "truncated" message
+        
+        embed = discord.Embed(
+            title=f"Character Stats for {passives.get('Character Name', discord_user_tag)}",
+            color=discord.Color.yellow()
+        )
+        embed.set_thumbnail(url=member.display_avatar.url) # Optional
+
+        if 'Character Name' in passives:
+            embed.description = f"**Character:** {passives['Character Name']}"
+        else:
+            embed.description = "Character name not found in passives."
+            
+
+        # Prepare fields, excluding Player and Character Name which are handled
+        fields_to_add = []
+        for key, value in passives.items():
+            if key.lower() not in ['player', 'character name']:
+                fields_to_add.append((key, value))
+        
+        truncated = False
+        if len(fields_to_add) > MAX_EMBED_FIELDS:
+            fields_to_add = fields_to_add[:MAX_EMBED_FIELDS]
+            truncated = True
+
+        for key, value in fields_to_add:
+            embed.add_field(name=key, value=value, inline=True)
+        
+        if truncated:
+            embed.set_footer(text=f"Note: Some passives were truncated as they exceed Discord's display limit ({MAX_EMBED_FIELDS} fields).")
+
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send(f"Could not find character stats for {discord_user_tag} in the document. Ensure the player tag (e.g., Player: @Username#1234) and format are correct in the Google Doc.")
+@charpassives.error
+async def charpassives_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send("You need to mention a user! Usage: `!charpassives @Username`")
+    elif isinstance(error, commands.MemberNotFound):
+        await ctx.send(f"Could not find the user: {error.argument}. Please make sure you've entered a valid @mention or UserID.")
+    else:
+        await ctx.send("An unexpected error occurred. Please check the bot logs.")
+        print(f"Error in charstats command: {error}")
 
 # --- Main Execution ---
 if __name__ == "__main__":
